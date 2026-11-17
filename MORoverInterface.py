@@ -1,19 +1,25 @@
 import yaml
 import torch
 import numpy as np
+import copy
+import os
 
 from Policy import Policy
 from MORoverEnv import MORoverEnv
 
 class MORoverInterface():
-    def __init__(self, rover_config_filename):
+    def __init__(self, rover_config_filename, data_dir):
         """
         Initialise the MOROverInterface class with its instance of the MOROverEnv Domain.
         Setup an internal reference to the rover config file
         """
-        self.rover_env = MORoverEnv(rover_config_filename)
+        self.rover_env = MORoverEnv(rover_config_filename, data_dir=data_dir)
         with open(rover_config_filename, 'r') as config_file:
             self.config = yaml.safe_load(config_file)
+        # Sample and store agent start locations once per experiment/run.
+        self.rover_env.agents_start = self.rover_env.sample_agent_start_locations()
+        # Save final resolved environment (POIs + agent starts)
+        self.rover_env.save_env_instance()
     
     # to perform a key-wise sum of two dicts
     def _keywise_sum(self, dict1, dict2):
@@ -34,10 +40,33 @@ class MORoverInterface():
             raise ValueError("The supplied joint policy should be a list of Policy type objects")
 
         ep_length = self.rover_env.get_ep_length()
-        agent_locations = self.config['Agents']['starting_locs']  # set each agent to the starting location
+        # Use the pre-sampled agent start locations (sampled once at interface init).
+        # Make a deepcopy so rollouts can modify positions without mutating the stored starts.
+        if getattr(self.rover_env, 'agents_start', None) is not None:
+            agent_locations = copy.deepcopy(self.rover_env.agents_start)
+        else:
+            raise ValueError("Rover environment is missing pre-sampled agent start locations. Ensure that the environment is properly initialized and that sample_agent_start_locations() is called at least once.")
+        
         num_sensors = self.config['Agents']['num_sensors']
         observation_radii = self.config['Agents']['observation_radii']
         max_step_sizes = self.config['Agents']['max_step_sizes']
+        
+        # Render and save a static image of the environment only once
+        if not hasattr(self, "_env_visualized"):
+            if self.rover_env.data_dir is not None:
+                save_path = os.path.join(
+                    self.rover_env.data_dir,
+                    "env_instance.png"
+                )
+            else:
+                save_path = None
+                
+            self.rover_env.render_static(
+                agent_locations,
+                observation_radii,
+                save_path=save_path
+            )
+            self._env_visualized = True
         
         cumulative_global_reward = {}  # Initialize cumulative global reward
 
@@ -129,7 +158,7 @@ class MORoverInterface():
         Get the number of agents that must be deployed in a rollout. Team size.
         '''
         # team size is implicitly recorded by the length of starting locations
-        return len(self.config['Agents']['starting_locs'])
+        return self.config['Agents']['num_agents']
     
     def get_num_objs(self):
         '''

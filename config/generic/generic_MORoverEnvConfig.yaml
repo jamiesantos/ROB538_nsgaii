@@ -1,0 +1,96 @@
+Meta:
+  num_objs: 2
+
+Environment:
+  dimensions: [20, 20]
+  ep_length: 25
+  timestep_penalty: 0
+
+  global_reward_mode: "Aggregated"
+  local_reward_mode: "exponential"
+  local_reward_kneecap: 10.0
+  local_reward_temp: 2
+
+  observation_mode: "density"
+  poi_obs_temp: 2
+  agent_obs_temp: 2
+  include_location_in_obs: False
+
+  # Add a wall
+  obstacles:
+    - type: vertical_segment
+      x: 10
+      y_min: 7
+      y_max: 13
+
+
+POI_Generation:
+  mode: "concentric_rings"   # ["fixed", "concentric_rings"]
+
+  center: [10, 10]
+
+  rings:
+    # ---------- LEFT ----------
+    - obj: 0
+      num_pois: 1
+      radius: 2.5
+      radius_jitter: 0
+      poi_radius: 1.0
+      coupling: 2
+      reward: 1
+      obs_window: [0, 100]
+      repeat: True
+      angle_offset_deg: 150
+
+    - obj: 1
+      num_pois: 1
+      radius: 2.5
+      radius_jitter: 0
+      poi_radius: 1.0
+      coupling: 2
+      reward: 1
+      obs_window: [0, 100]
+      repeat: True
+      angle_offset_deg: 210
+
+
+    # ---------- RIGHT ----------
+    - obj: 0
+      num_pois: 1
+      radius: 2.5
+      radius_jitter: 0
+      poi_radius: 1.0
+      coupling: 2
+      reward: 5
+      obs_window: [0, 100]
+      repeat: True
+      angle_offset_deg: 30
+
+    - obj: 1
+      num_pois: 1
+      radius: 2.5
+      radius_jitter: 0
+      poi_radius: 1.0
+      coupling: 2
+      reward: 5
+      obs_window: [0, 100]
+      repeat: True
+      angle_offset_deg: 330
+
+Agents:
+  num_agents: 2
+  start_mode: fixed  # or "random_circle"
+
+  # used only if start_mode == fixed
+  starting_locs:
+    - [6, 9]
+    - [6, 11]
+
+  # used only if start_mode == random_circle
+  start_center: [10, 10]
+  start_radius: 1.0
+  min_start_separation: 0.5
+
+  num_sensors: [4, 4]
+  observation_radii: [5, 5]
+  max_step_sizes: [1, 1]

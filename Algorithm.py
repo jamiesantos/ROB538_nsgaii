@@ -3,9 +3,9 @@ import pygmo as pg
 import random
 import torch
 import numpy
+import os
 
 import MORoverInterface
-import MOBeachInterface
 import Policy
 import Individual
 import Utils
@@ -21,13 +21,12 @@ class CentralisedAlgorithm:
         self.data_logger = ExpUtils.DataLogger.DataLogger(data_fields=['gen',
                                                                        'id',
                                                                        'fitness',
+                                                                       'raw_fitness',
+                                                                       'traj_entropy',
                                                                        'trajectory'],
                                                                        target_filename=self.data_filename)
 
-        if domain_name == "rover":
-            self.interface = MORoverInterface.MORoverInterface(domain_config_filename)
-        elif domain_name == "beach":
-            self.interface = MOBeachInterface.MOBeachInterface(domain_config_filename)
+        self.interface = MORoverInterface.MORoverInterface(domain_config_filename, data_dir=os.path.dirname(data_filename))
         
         self.team_size = self.interface.get_team_size()
         self.num_objs = self.interface.get_num_objs()
@@ -75,10 +74,7 @@ class CoevolutionaryAlgorithm:
                                                                        'trajectory'],
                                                                        target_filename=self.data_filename)
 
-        if domain_name == "rover":
-            self.interface = MORoverInterface.MORoverInterface(domain_config_filename)
-        elif domain_name == "beach":
-            self.interface = MOBeachInterface.MOBeachInterface(domain_config_filename)
+        self.interface = MORoverInterface.MORoverInterface(domain_config_filename)
         
         self.team_size = self.interface.get_team_size()
         self.num_objs = self.interface.get_num_objs()

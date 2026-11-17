@@ -2,6 +2,8 @@ import yaml
 import copy
 import math
 import numpy as np
+import matplotlib.pyplot as plt
+import os
 
 class POI:
     def __init__(self, obj, location, radius, coupling, obs_window, reward, repeat):
@@ -94,11 +96,12 @@ class POI:
 
 
 class MORoverEnv:
-    def __init__(self, config_filename):
+    def __init__(self, config_filename, data_dir=None):
         if not isinstance(config_filename, str):
             raise ValueError('Rover configuration filename must be a string.')
 
         self.config_filename = config_filename
+        self.data_dir = data_dir
         self._read_config()  # Initial loading of the environment configuration
 
     def _read_config(self):
@@ -108,6 +111,51 @@ class MORoverEnv:
             print('[MORoverEnv]: YAML config read.')
 
         self._load_config()
+
+    def _generate_pois(self):
+        poi_cfg = self.config_data['POI_Generation']
+
+        if poi_cfg['mode'] == 'fixed':
+            return [POI(**poi) for poi in self.config_data['Environment']['pois']]
+
+        elif poi_cfg['mode'] == 'concentric_rings':
+            center = np.array(poi_cfg['center'], dtype=float)
+            pois = []
+
+            #base_theta = np.random.uniform(0, 2 * np.pi)
+            base_theta = 0.0 # for reproducibility, we can set this to 0. The angle_offset_deg will allow us to still have some variation in the arrangement of the pois across different rings, while ensuring the same arrangement across different runs of the same config.
+            
+            for ring in poi_cfg['rings']:
+                num = ring['num_pois']
+                base_r = ring['radius']
+                jitter = ring.get('radius_jitter', 0.0)
+
+                angle_offset_deg = ring.get('angle_offset_deg', 0.0)
+                angle_offset = np.deg2rad(angle_offset_deg)
+
+                for i in range(num):
+                    theta = base_theta + 2 * np.pi * i / num + angle_offset
+
+                    r = base_r + np.random.uniform(-jitter, jitter)
+
+                    loc = center + r * np.array([np.cos(theta), np.sin(theta)])
+
+                    pois.append(
+                        POI(
+                            obj=ring['obj'],
+                            location=loc.tolist(),
+                            radius=ring['poi_radius'],
+                            coupling=ring['coupling'],
+                            obs_window=ring['obs_window'],
+                            reward=ring['reward'],
+                            repeat=ring['repeat']
+                        )
+                    )
+
+            return pois
+
+        else:
+            raise ValueError(f"Unknown POI generation mode: {poi_cfg['mode']}")
     
     def _load_config(self):
         """Load internal environment configuration."""
@@ -125,18 +173,49 @@ class MORoverEnv:
         self.agent_obs_temp = self.config_data['Environment']['agent_obs_temp'] # Temp for state info of the agents -> e^-x/temp
         self.include_location_in_obs = self.config_data['Environment']['include_location_in_obs']
 
+        # Initialize obstacles
+        self.obstacles = self.config_data['Environment'].get('obstacles', [])
+        
         # Initialize POIs and store initial configuration
-        self.pois = [POI(**poi) for poi in self.config_data['Environment']['pois']]
+        self.pois = self._generate_pois()
         self._initial_pois = copy.deepcopy(self.pois)  # Save initial state for reset
+
+    def save_env_instance(self):
+        if self.data_dir is None:
+            return
+
+        os.makedirs(self.data_dir, exist_ok=True)
+
+        instance = {
+            'dimensions': self.dimensions,
+            'ep_length': self.ep_length,
+            'pois': [
+                {
+                    'obj': poi.obj,
+                    'location': poi.location,
+                    'radius': poi.radius,
+                    'coupling': poi.coupling,
+                    'obs_window': poi.obs_window,
+                    'reward': poi.reward,
+                    'repeat': poi.repeat,
+                }
+                for poi in self.pois
+            ],
+            'agents_start': getattr(self, 'agents_start', None)
+        }
+
+        with open(os.path.join(self.data_dir, 'env_instance.yaml'), 'w') as ef:
+            yaml.safe_dump(instance, ef)
 
     def reset(self):
         """Reset the environment to its initial configuration."""
-        # Reload the environment configuration
-        self._load_config()
-        # Reset each POI to its original state
+        # Restore fixed POI layout
+        self.pois = copy.deepcopy(self._initial_pois)
+
+        # Reset internal POI state
         for poi in self.pois:
             poi.reset()
-    
+        
     def get_global_rewards(self, rov_locations, timestep):
         """
         Calculate and return the net reward vector for a list of rover positions at a given timestep.
@@ -208,6 +287,34 @@ class MORoverEnv:
         
         return local_rewards
 
+    def _collides_with_wall(self, old_loc, new_loc):
+
+        for obs in self.obstacles:
+
+            if obs['type'] == 'vertical_segment':
+
+                wall_x = obs['x']
+                y_min  = obs['y_min']
+                y_max  = obs['y_max']
+
+                # Did agent cross the wall in x?
+                crossed = (
+                    (old_loc[0] < wall_x and new_loc[0] >= wall_x) or
+                    (old_loc[0] > wall_x and new_loc[0] <= wall_x)
+                )
+                if crossed:
+
+                    old_y = old_loc[1]
+                    new_y = new_loc[1]
+
+                    # interpolate y where crossing happens
+                    t = (wall_x - old_loc[0]) / (new_loc[0] - old_loc[0])
+                    y_cross = old_y + t * (new_y - old_y)
+
+                    if y_min <= y_cross <= y_max:
+                        return True
+
+        return False 
     
     def update_agent_locations(self, agent_locations, agent_deltas, max_step_sizes):
         """
@@ -247,6 +354,10 @@ class MORoverEnv:
                 updated_coord = coord + delta_i
                 updated_coord = max(0, min(updated_coord, max_dim))  # Enforce boundaries
                 new_location.append(updated_coord)
+                
+            if self._collides_with_wall(loc, new_location):
+                new_location = loc  # cancel movement
+                
 
             updated_locations.append(new_location)
 
@@ -395,3 +506,95 @@ class MORoverEnv:
     
     def get_dimensions(self):
         return self.dimensions
+ 
+    def sample_agent_start_locations(self):
+        cfg = self.config_data['Agents']
+
+        if cfg['start_mode'] == 'fixed':
+            return copy.deepcopy(cfg['starting_locs'])
+
+        elif cfg['start_mode'] == 'random_circle':
+            center = np.array(cfg['start_center'], dtype=float)
+            radius = cfg['start_radius']
+            min_sep = cfg.get('min_start_separation', 0.0)
+            n = cfg['num_agents']
+
+            locs = []
+            attempts = 0
+            max_attempts = 1000
+
+            while len(locs) < n:
+                if attempts > max_attempts:
+                    raise RuntimeError("Could not sample non-overlapping agent starts")
+
+                theta = np.random.uniform(0, 2*np.pi)
+                r = np.random.uniform(0, radius)
+                candidate = (center + r * np.array([np.cos(theta), np.sin(theta)])).tolist()
+
+                if all(math.dist(candidate, other) >= min_sep for other in locs):
+                    locs.append(candidate)
+
+                attempts += 1
+
+            return locs
+
+        else:
+            raise ValueError(f"Unknown start_mode: {cfg['start_mode']}")
+        
+    def render_static(self, agent_locations, obs_radii, save_path=None):
+        dims = self.dimensions
+
+        fig, ax = plt.subplots(figsize=(7, 7))
+        ax.set_xlim(0, dims[0])
+        ax.set_ylim(0, dims[1])
+        ax.set_aspect("equal")
+        ax.set_title("Resolved MORover Environment")
+
+        ax.set_xticks(range(int(dims[0]) + 1))
+        ax.set_yticks(range(int(dims[1]) + 1))
+        ax.grid(alpha=0.3)
+
+        # --- POIs ---
+        for poi in self.pois:
+            x, y = poi.location
+            circ = plt.Circle((x, y), poi.radius, alpha=0.3)
+            ax.add_patch(circ)
+            ax.plot(x, y, "o", label=f"POI obj {poi.obj}")
+            
+        # --- Obstacles (Walls) ---
+        for obs in self.obstacles:
+
+            if obs['type'] == 'vertical_segment':
+
+                wall_x = obs['x']
+                y_min  = obs['y_min']
+                y_max  = obs['y_max']
+
+                ax.plot(
+                    [wall_x, wall_x],
+                    [y_min, y_max],
+                    linewidth=4,
+                    color='black',
+                    solid_capstyle='butt',
+                    label='Wall'
+                )
+        # --- Agents ---
+        for i, (loc, r) in enumerate(zip(agent_locations, obs_radii)):
+            x, y = loc
+            ax.plot(x, y, "ks", label="Agent" if i == 0 else "")
+            circ = plt.Circle((x, y), r, linestyle="--", fill=False)
+            ax.add_patch(circ)
+
+        # Clean legend
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys())
+
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, dpi=200, bbox_inches="tight")
+        else:
+            plt.show()
+
+        plt.close()
+
