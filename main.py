@@ -15,16 +15,13 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, REPO_ROOT)
 
 import algorithms.NSGAII as NSGAII
-import algorithms.KParentNSGAII as KParentNSGAII
-import algorithms.DMO as DMO
-import algorithms.NSGAII_D as NSGAII_D
 
 if __name__ == '__main__':
     assert len(sys.argv) == 9, "Correct usage: python alg_name domain_name data_dirpath alg_config env_config seed label traj_write_freq"
    
     # Process the command line args
     alg_name = sys.argv[1]
-    assert alg_name in ['nsga2', 'kpnsga2', 'dmo', 'nsga2+d'], "Unrecognised alg_name"
+    assert alg_name in ['nsga2'], "Unrecognised alg_name"
     domain_name = sys.argv[2]
     assert domain_name in ['rover'], 'Uncrecognised domain_name'
     data_dir = sys.argv[3]
@@ -39,7 +36,6 @@ if __name__ == '__main__':
         src_env_config_filename = os.path.join(REPO_ROOT, src_env_config_filename)
     seed_val = int(sys.argv[6])
     seed_val_str = str(seed_val)
-    #label = sys.argv[7]
     traj_write_freq = int(sys.argv[7])
     beta = float(sys.argv[8])
 
@@ -111,28 +107,12 @@ if __name__ == '__main__':
     numpy.random.seed(seed_val)
 
     # Initialise the algorithm based on alg name
-    if alg_name == 'nsga2':
-        alg = NSGAII.NSGAII(alg_config_filename=dest_alg_config_filename,
-                            domain_name=domain_name,
-                            data_filename=data_filename,
-                            rover_config_filename=dest_env_config_filename,
-                            beta=beta)
-    elif alg_name == 'kpnsga2':
-        alg = KParentNSGAII.KParentNSGAII(alg_config_filename=dest_alg_config_filename,
-                                          domain_name=domain_name,
-                                          data_filename=data_filename,
-                                          rover_config_filename=dest_env_config_filename)
-    elif alg_name == 'dmo':
-        alg = DMO.DMO(alg_config_filename=dest_alg_config_filename,
-                      domain_name=domain_name,
-                      data_filename=data_filename,
-                      rover_config_filename=dest_env_config_filename)
-    elif alg_name == 'nsga2+d':
-        alg = NSGAII_D.NSGAII_D(alg_config_filename=dest_alg_config_filename,
-                                domain_name=domain_name,
-                                data_filename=data_filename,
-                                rover_config_filename=dest_env_config_filename)
-    
+    alg = NSGAII.NSGAII(alg_config_filename=dest_alg_config_filename,
+                        domain_name=domain_name,
+                        data_filename=data_filename,
+                        rover_config_filename=dest_env_config_filename,
+                        beta=beta)
+
     # Run the algorithm
     next_print = 0.0  # percent
     num_gens = alg.num_gens
