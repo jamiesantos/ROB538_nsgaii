@@ -7,8 +7,6 @@ import os
 
 import Algorithm
 
-ENTROPY = True
-
 class NSGAII(Algorithm.CentralisedAlgorithm):
     def __init__(self, alg_config_filename, domain_name, rover_config_filename, data_filename, beta):
         super().__init__(alg_config_filename, domain_name, rover_config_filename, data_filename)
@@ -22,24 +20,13 @@ class NSGAII(Algorithm.CentralisedAlgorithm):
             ind.reset_fitness()
             # Conduct rollout
             trajectory, fitness_dict = self.interface.rollout(ind.joint_policy)
-            # Compute the trajectory's entropy
-            traj_entropy = self.compute_entropy(trajectory)
-            #print("trajectory entropy: ", traj_entropy)
-            
-            # Distribute entropy into fitness components
-            weights = {0: self.beta, 1: self.beta}  # Entropy scaling factors for each objective
-            raw_fitness_dict = fitness_dict.copy()
-            if ENTROPY:
-                for f in fitness_dict:
-                    fitness_dict[f] += weights[f] * traj_entropy
-            
-            #fitness_dict = fitness_dict + beta * traj_entropy
 
             if len(fitness_dict) != self.num_objs:
                 raise ValueError(f"[NSGA-II] Expected {self.num_objs} objectives, but got {len(fitness_dict)}.")
             # Store the rollout trajectory
             ind.trajectory = trajectory
             # Store fitness
+            raw_fitness_dict = fitness_dict.copy()  # Store the unshaped fitness for evaluation
             for f in fitness_dict:
                 ind.fitness[f] = -fitness_dict[f] # NOTE: The fitness sign is flipped to match Pygmo convention
                 ind.raw_fitness[f] = -raw_fitness_dict[f]  # unshaped, for evaluation
@@ -49,7 +36,6 @@ class NSGAII(Algorithm.CentralisedAlgorithm):
             self.data_logger.add_data(key='id', value=ind.id)
             self.data_logger.add_data(key='fitness', value=ind.fitness)
             self.data_logger.add_data(key='raw_fitness', value=ind.raw_fitness)
-            self.data_logger.add_data(key='traj_entropy', value=traj_entropy)
             if gen == self.num_gens - 1 or gen % traj_write_freq == 0:
                 self.data_logger.add_data(key='trajectory', value=ind.trajectory)
             else:
@@ -124,77 +110,3 @@ class NSGAII(Algorithm.CentralisedAlgorithm):
         except Exception:
             # Don't interrupt evolution if checkpointing fails
             pass
-    
-    def compute_entropy(self, trajectory):
-        """
-        Computes the average entropy of the joint position over the episode 
-        using KNN entropy estimation.
-        """
-        # Safety check for empty trajectory
-        if not trajectory or len(trajectory) == 0:
-            return 0.0
-
-        num_agents = len(trajectory)
-        episode_length = len(trajectory[0])
-
-        # ---------------------------------------------------------
-        # 1. Process trajectory to extract Joint Positions
-        # Target Shape: (Episode_Length, Num_Agents * Position_Dim)
-        # ---------------------------------------------------------
-        joint_positions = []
-
-        for t in range(episode_length):
-            timestep_pos = []
-            for agent_i in range(num_agents):
-                # Extract position from the specific agent at specific time
-                pos = trajectory[agent_i][t]['position']
-                
-                # Handle inconsistent data types (numpy array vs list vs np.float32)
-                if isinstance(pos, np.ndarray):
-                    pos = pos.tolist()
-                
-                # Ensure all elements are standard python floats
-                # (The example data contained mixed lists of int and np.float32)
-                pos = [float(x) for x in pos]
-                
-                timestep_pos.extend(pos)
-            
-            joint_positions.append(timestep_pos)
-
-        # Convert to torch tensor for efficient matrix math
-        # Shape: (N, D) where N = Timesteps, D = Joint Dimension
-        data = torch.tensor(joint_positions, dtype=torch.float32)
-
-        # ---------------------------------------------------------
-        # 2. KNN Entropy Estimation
-        # ---------------------------------------------------------
-        N = data.shape[0]
-        k = 5  # The 'k' for k-Nearest Neighbors
-        
-        # Edge case: If episode is shorter than k, we cannot compute k-th neighbor
-        if N <= k:
-            return 0.0
-
-        # Compute pairwise Euclidean distances matrix
-        # Shape: (N, N)
-        dists = torch.cdist(data, data, p=2)
-
-        # Find the k-th nearest neighbor for each point.
-        # We look for the (k+1) smallest values because the 0-th neighbor 
-        # is the point itself (distance = 0).
-        # values[:, k] extracts the distance to the actual k-th neighbor.
-        knn_dists = dists.topk(k + 1, largest=False).values[:, k]
-
-        # ---------------------------------------------------------
-        # 3. Compute Entropy Value
-        # ---------------------------------------------------------
-        # The Kozachenko-Leonenko estimator states H is proportional to mean(log(distance)).
-        # We add a small epsilon to prevent log(0) if agents return to exact same pixel.
-        #epsilon = 1e-12
-        epsilon = 1 # Shift distance so that log values are not negative 
-        log_dists = torch.log(knn_dists + epsilon)
-        
-        # Average over the episode
-        avg_entropy = torch.mean(log_dists).item()
-
-        return avg_entropy
