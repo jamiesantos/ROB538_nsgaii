@@ -16,81 +16,54 @@ Environment:
   agent_obs_temp: 2
   include_location_in_obs: False
 
-  # Add a wall
-  obstacles:
-    - type: vertical_segment
-      x: 10
-      y_min: 7
-      y_max: 13
+  pois:
+      # Objective 0
+      - obj: 0
+        location: [6, 7]
+        radius: 1.5
+        coupling: 2
+        obs_window: [0, 100]
+        reward: 1
+        repeat: True
 
+      - obj: 0
+        location: [14, 13]
+        radius: 1.5
+        coupling: 2
+        obs_window: [0, 100]
+        reward: 5
+        repeat: True
+
+      # Objective 1
+      - obj: 1
+        location: [6, 13]
+        radius: 1.5
+        coupling: 2
+        obs_window: [0, 100]
+        reward: 1
+        repeat: True
+
+      - obj: 1
+        location: [14, 7]
+        radius: 1.5
+        coupling: 2
+        obs_window: [0, 100]
+        reward: 5
+        repeat: True
 
 POI_Generation:
-  mode: "concentric_rings"   # ["fixed", "concentric_rings"]
-
-  center: [10, 10]
-
-  rings:
-    # ---------- LEFT ----------
-    - obj: 0
-      num_pois: 1
-      radius: 2.5
-      radius_jitter: 0
-      poi_radius: 1.0
-      coupling: 2
-      reward: 1
-      obs_window: [0, 100]
-      repeat: True
-      angle_offset_deg: 150
-
-    - obj: 1
-      num_pois: 1
-      radius: 2.5
-      radius_jitter: 0
-      poi_radius: 1.0
-      coupling: 2
-      reward: 1
-      obs_window: [0, 100]
-      repeat: True
-      angle_offset_deg: 210
-
-
-    # ---------- RIGHT ----------
-    - obj: 0
-      num_pois: 1
-      radius: 2.5
-      radius_jitter: 0
-      poi_radius: 1.0
-      coupling: 2
-      reward: 5
-      obs_window: [0, 100]
-      repeat: True
-      angle_offset_deg: 30
-
-    - obj: 1
-      num_pois: 1
-      radius: 2.5
-      radius_jitter: 0
-      poi_radius: 1.0
-      coupling: 2
-      reward: 5
-      obs_window: [0, 100]
-      repeat: True
-      angle_offset_deg: 330
+  mode: "fixed"
 
 Agents:
-  num_agents: 2
-  start_mode: fixed  # or "random_circle"
+  num_agents: 4
+  start_mode: fixed
 
-  # used only if start_mode == fixed
   starting_locs:
-    - [6, 9]
-    - [6, 11]
+    - [9, 9]
+    - [11, 9]
+    - [9, 11]
+    - [11, 11]
 
-  # used only if start_mode == random_circle
-  start_center: [10, 10]
-  start_radius: 1.0
-  min_start_separation: 0.5
-
-  num_sensors: [4, 4]
-  observation_radii: [5, 5]
-  max_step_sizes: [1, 1]
+  num_sensors: [4, 4, 4, 4]
+  observation_radii: [5, 5, 5, 5]
+  max_step_sizes: [1, 1, 1, 1]

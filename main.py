@@ -37,7 +37,6 @@ if __name__ == '__main__':
     seed_val = int(sys.argv[6])
     seed_val_str = str(seed_val)
     traj_write_freq = int(sys.argv[7])
-    beta = float(sys.argv[8])
 
     # Datetime for file naming
     datetime_now_string = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -47,14 +46,18 @@ if __name__ == '__main__':
 
     num_agents = env_config['Agents']['num_agents']
 
-    rings = env_config['POI_Generation']['rings']
-    num_pois = sum(ring['num_pois'] for ring in rings)
+    poi_mode = env_config['POI_Generation']['mode']
+
+    if poi_mode == 'fixed':
+        num_pois = len(env_config['Environment']['pois'])
+    elif poi_mode == 'concentric_rings':
+        rings = env_config['POI_Generation']['rings']
+        num_pois = sum(ring['num_pois'] for ring in rings)
+    else:
+        raise ValueError(f"Unrecognized POI generation mode: {poi_mode}")
 
     # Sanitize label for filesystem safety
-    beta_str = f"{beta:.3f}".rstrip('0').rstrip('.')  # clean format
-    beta_str = beta_str.replace('.', 'p')             # filesystem friendly
-
-    safe_label = f"A{num_agents}_P{num_pois}_B{beta_str}"
+    safe_label = f"A{num_agents}_P{num_pois}_S{seed_val_str}"
 
     
     # Find existing runs with the same label
@@ -93,7 +96,6 @@ if __name__ == '__main__':
         f.write(f"label: {safe_label}\n")
         f.write(f"run_number: {next_run_num}\n")
         f.write(f"traj_write_freq: {traj_write_freq}\n")
-        f.write(f"beta: {beta}\n")
         f.write(f"datetime: {datetime_now_string}\n")
         f.write(f"alg_config_source: {src_alg_config_filename}\n")
         f.write(f"env_config_source: {src_env_config_filename}\n")
@@ -110,8 +112,7 @@ if __name__ == '__main__':
     alg = NSGAII.NSGAII(alg_config_filename=dest_alg_config_filename,
                         domain_name=domain_name,
                         data_filename=data_filename,
-                        rover_config_filename=dest_env_config_filename,
-                        beta=beta)
+                        rover_config_filename=dest_env_config_filename)
 
     # Run the algorithm
     next_print = 0.0  # percent

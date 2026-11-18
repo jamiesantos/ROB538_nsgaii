@@ -8,9 +8,8 @@ import os
 import Algorithm
 
 class NSGAII(Algorithm.CentralisedAlgorithm):
-    def __init__(self, alg_config_filename, domain_name, rover_config_filename, data_filename, beta):
+    def __init__(self, alg_config_filename, domain_name, rover_config_filename, data_filename):
         super().__init__(alg_config_filename, domain_name, rover_config_filename, data_filename)
-        self.beta = beta
 
     def evolve(self, gen=0, traj_write_freq=100):
         """Evolve the population using NSGA-II."""
